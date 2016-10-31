@@ -100,13 +100,13 @@ function animate() {
   var dt = clock.getDelta();
   keyboard.update();
    // force: add gravity first
- 	force  = new THREE.Vector3(0, -90, 0) ;
+   force  = new THREE.Vector3(0, -90, 0) ;
   
   if (keyboard.pressed('right')  && pos.y <= ballR ) {
-    force.add(new THREE.Vector3(50 ,0 , 0));
+    force.add(new THREE.Vector3(100 , 0 , 0 ));
   }
   else if (keyboard.pressed('left') && pos.y <= ballR ) {
-  	force.add(new THREE.Vector3(-50 ,0 , 0));
+  	force.add(new THREE.Vector3(-100 , 0 ,  0));
   }
   	
 	if (keyboard.down('space')  && pos.y <= ballR ) {
@@ -124,11 +124,11 @@ function animate() {
 
   if( pos.x  >= 450 - ballR ) {
   	pos.x = 450 - ballR ;
-  	force  = new THREE.Vector3(0, 0, 0) ;
+  	if( pos.y <= ballR) vel  = new THREE.Vector3(0, 0, 0) ;
   }
   if( pos.x  <= -50 + ballR ){
   	pos.x = -50 + ballR ;
-    force  = new THREE.Vector3(0, 0, 0) ;
+    if( pos.y <= ballR) vel  = new THREE.Vector3(0, 0, 0) ;
   }
   
   ball.position.copy(pos);
@@ -150,6 +150,7 @@ function render() {
 }
 
 window.focus();
+
 
 
 </script>
