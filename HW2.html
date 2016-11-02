@@ -103,17 +103,17 @@ function animate() {
    force  = new THREE.Vector3(0, -90, 0) ;
   
   if (keyboard.pressed('right')  && pos.y <= ballR ) {
-    force.add(new THREE.Vector3(100 , 0 , 0 ));
+    vel.add( new THREE.Vector3(5, 0, 0) );
   }
   else if (keyboard.pressed('left') && pos.y <= ballR ) {
-  	force.add(new THREE.Vector3(-100 , 0 ,  0));
+  	vel.add( new THREE.Vector3(-5, 0, 0) );
   }
   	
 	if (keyboard.down('space')  && pos.y <= ballR ) {
    	force.add(new THREE.Vector3(0,4000, 0));
   }
   if (pos.y <= ballR) { // if contact, add contact force
-    pos.y === ballR ;
+    pos.y = ballR ;
     force.add(new THREE.Vector3(0, 90, 0));
     vel.y *= -0.8;
   }
@@ -150,8 +150,6 @@ function render() {
 }
 
 window.focus();
-
-
 
 </script>
 </body>
