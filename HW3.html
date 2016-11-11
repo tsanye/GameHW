@@ -10,7 +10,7 @@
   width: 100%;
   padding: 10px;
   text-align: center;
-  color: #000000
+  color: #ffffff
 }
 
 body {
@@ -204,7 +204,7 @@ function animate() {
   }
  
 	if (keyboard.down('space')  && pos.y <= LaprasR + height(pos.x)  ) {
-   	force.add(new THREE.Vector3(0,4000, 0));
+   	force.add(new THREE.Vector3(0,3000, 0));
   }
   if (pos.y <= LaprasR + height(pos.x) ) { // if contact, add contact force
     pos.y = LaprasR + height(pos.x) ;
