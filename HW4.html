@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+<style>
+#info {
+  position: absolute;
+  top: 0px;
+  width: 100%;
+  padding: 10px;
+  text-align: center;
+  color: #ffff00
+}
+
+body {
+  overflow: hidden;
+}
+
+
+</style>
+</head>
+
+<body> 
+<div id="info">I3B05 HW4</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r70/three.min.js"></script>
+<script src="https://dl.dropboxusercontent.com/u/3587259/Code/Threejs/OrbitControls.js">
+
+
+</script>
+<script src="https://jyunming-chen.github.io/tutsplus/js/KeyboardState.js"></script>
+<script>
+var camera, scene, renderer, controls;
+var puck;
+var obstacles = [] ;
+var agents = [];
+var angle = 0;
+var targetCatch = false;
+var targetOmega = 0.3;
+
+var maxNum = 100 ;
+var minNum = -100 ;
+
+var raycaster;
+var mouse = new THREE.Vector2();
+var pickables = [];
+
+var mass = 1;
+var clock = new THREE.Clock();
+
+var target = new THREE.Vector3();
+
+var Obstacle = function( obCen , obRad ){
+	this.center = obCen ;
+  this.position = obCen ; 
+  this.radius = obRad ; 
+  this.mesh = new THREE.Mesh (new THREE.CircleGeometry (this.radius , 20));
+  this.mesh.rotation.x = -Math.PI/2;
+  scene.add(this.mesh) ;
+  this.mesh.position.copy(this.position);
+}
+
+var Agent = function(mesh, initPos) {
+  this.pos = new THREE.Vector3();
+  if (initPos) this.pos.copy(initPos);
+  this.vel = new THREE.Vector3();
+  this.force = new THREE.Vector3();
+  this.target = new THREE.Vector3();
+  this.angle = 0;
+  this.maxSpeed = 60;
+  this.maxForce = 60;
+  this.mesh = mesh.clone();
+  scene.add(this.mesh);
+  this.nbhd = [];
+  
+  this.alignment = new THREE.Vector3();
+	this.cohesion = new THREE.Vector3();
+	this.separation = new THREE.Vector3();
+
+  this.setTarget = function(target) {
+    this.target.copy(target);
+  }
+
+  this.update = function(dt) {
+    // compute force
+    this.force = 
+    this.target.clone().sub(this.pos).setLength(this.maxSpeed).sub(this.vel);
+
+		// collision avoidance
+    // (for each obstacle)
+    for( var i = 0 ; i < obstacles.length ; i++ ) {
+    	var tmp = obstacles[i].center.clone().sub(this.pos);
+    	var tmpProj = tmp.clone().projectOnVector(this.vel) ;
+    
+    	if (tmp.dot(this.vel) > 0) {
+    		if (tmpProj.clone().sub(tmp).length() < obstacles[i].radius + 2) {
+ 
+          if (tmpProj.length() < 5 *this.vel.length()) {
+            this.force.add (tmpProj.clone().sub(tmp).multiplyScalar(2));    	
+          }
+        }
+      }  
+		}
+    // force clamping
+    if (this.force.length() > this.maxForce)
+      this.force.setLength(this.maxForce);
+    this.vel.add(this.force.clone().multiplyScalar(dt));
+
+    // velocity clamping
+    if (this.vel.length() > this.maxSpeed)
+      this.vel.setLength(this.maxSpeed);
+    this.pos.add(this.vel.clone().multiplyScalar(dt));
+
+    if (this.vel.length() > 0.001) {
+      this.angle = Math.atan2(-this.vel.z, this.vel.x);
+    }
+    this.mesh.position.copy(this.pos);
+    this.mesh.rotation.y = this.angle;
+
+    // catch handling
+    if (this.pos.distanceTo(this.target) < 5) {
+    	targetCatch = true ; 
+    }
+  }
+  
+   this.computeAlignment = function(){
+  
+  	this.alignment.multiplyScalar(0);
+  	for(var i = 0 ; i < this.nbhd.length ; i++ ){
+   	   this.alignment.add( this.nbhd[i].vel );
+    }
+    this.alignment.divideScalar(this.nbhd.length);
+    this.alignment.normalize();
+    
+  }
+       
+  this.computeSeparation = function(){
+     
+  	this.separation.multiplyScalar(0);  
+  	for(var i = 0 ; i < this.nbhd.length ; i++ ){
+   		this.separation.add ( this.nbhd[i].pos.clone().sub(this.pos) ) ; 
+    }
+    this.separation.divideScalar(this.nbhd.length);
+  	this.separation.multiplyScalar (-1);
+  	this.separation.normalize();
+  }
+  
+  this.computeCohesion = function() {
+  
+  	var sum  = new THREE.Vector3(0,0,0);  
+  	for(var i = 0 ; i < this.nbhd.length ; i++ ){
+   		sum.add( this.nbhd[i].pos );
+    }
+    sum.divideScalar(this.nbhd.length);
+    this.cohesion.subVectors( sum , this.pos ) ;
+    this.cohesion.normalize() ; 
+  }
+
+}
+
+init();
+animate();
+
+function init() {
+  scene = new THREE.Scene();
+
+  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 1000);
+  camera.position.y = 200 ;
+  camera.position.z = 250;
+  scene.add(camera);
+
+  var gridXZ = new THREE.GridHelper(100, 10);
+  gridXZ.setColors(new THREE.Color(0xff0000), new THREE.Color(0xffffff));
+  scene.add(gridXZ);
+
+  renderer = new THREE.WebGLRenderer();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x888888);
+
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  document.body.appendChild(renderer.domElement);
+
+  plane = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshBasicMaterial({
+    visible: false
+  }));
+  scene.add(plane);
+  plane.rotation.x = -Math.PI / 2;
+  pickables = [plane];
+  
+  //////////////////// set agents /////////////////////
+  var box = new THREE.Mesh(new THREE.BoxGeometry(7, 2, 5), new THREE.MeshNormalMaterial());
+
+  agents.push(new Agent(box, new THREE.Vector3(0, 0, 0)));
+  agents.push(new Agent(box, new THREE.Vector3(0, 0, 0)));
+  agents.push(new Agent(box, new THREE.Vector3(0, 0, 0)));
+  agents.push(new Agent(box, new THREE.Vector3(0, 0, 0)));
+  agents.push(new Agent(box, new THREE.Vector3(0, 0, 0)));
+  agents.push(new Agent(box, new THREE.Vector3(0, 0, 0)));
+  agents.push(new Agent(box, new THREE.Vector3(0, 0, 0)));
+  
+  /////////////////// set obstacle ////////////////////
+  obstacles.push( new Obstacle(new THREE.Vector3(-50,0,-20) , 30 ) );
+  obstacles.push( new Obstacle(new THREE.Vector3(30,0,30) , 20 ) );
+  obstacles.push( new Obstacle(new THREE.Vector3(50,0,-50) , 25 ) );
+  obstacles.push( new Obstacle(new THREE.Vector3(-30,0,70) , 20 ) );
+  
+  puck = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 2, 20), new THREE.MeshNormalMaterial());
+  scene.add(puck);
+  
+  start();
+  
+  raycaster = new THREE.Raycaster();
+  document.addEventListener('mousedown', onDocumentMouseDown, false);
+
+}
+
+function computeNbhd(){
+    var n = agents.length; // number of agents
+    var R = 10;
+    for (var i = 0; i < n - 1; i++) {
+      for (var j = i + 1; j < n; j++) {
+        if ( agents[i].pos.distanceTo(agents[j].pos)  < R) {
+          agents[i].nbhd.push(agents[j]);
+          agents[j].nbhd.push(agents[i]);
+        }
+      }
+    }
+}
+
+function onDocumentMouseDown(event) {
+
+  event.preventDefault();
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+  // find intersections
+  raycaster.setFromCamera(mouse, camera);
+  var intersects = raycaster.intersectObjects(pickables);
+  if (intersects.length > 0) {
+    puck.position.copy(intersects[0].point);
+    target.copy(intersects[0].point);
+  }
+
+}
+
+function groupSteer(){
+
+  for( var i = 0 ; i < agents.length ; i++ ) {
+		agents[i].computeAlignment();
+		agents[i].computeSeparation();
+		agents[i].computeCohesion();
+	}
+
+	for( var i = 0 ; i < agents.length ; i++ ) {
+		agents[i].vel.add( agents[i].alignment.divideScalar(4)) ;
+    agents[i].vel.add( agents[i].separation.divideScalar(2)) ;
+    agents[i].vel.add( agents[i].cohesion.divideScalar(3)) ;
+    //agents[i].vel.normalize();
+    agents[i].vel.y = 0 ;
+	}
+}
+
+function start(){
+
+	for( var i = 0 ; i < agents.length ; i++ ) {
+  	angle = Math.random() * Math.PI * 2;
+    agents[i].vel = new THREE.Vector3(0,0,0);
+    agents[i].alignment = new THREE.Vector3(0,0,0);
+    agents[i].separation = new THREE.Vector3(0,0,0);
+    agents[i].cohesion = new THREE.Vector3(0,0,0);
+   	agents[i].pos =  new THREE.Vector3(100 * Math.cos(angle), 0, 100 * Math.sin(angle));
+  }
+}
+
+function animate() {
+  var dt = clock.getDelta(); // delta-time
+ 	
+  computeNbhd() ; 
+  groupSteer();
+  
+  if( targetCatch) {
+  	targetCatch = false ; 
+  	start();
+  }
+  for (i = 0; i < agents.length; i++) {
+    agents[i].update(dt);
+    agents[i].setTarget(target);
+  }
+  
+  controls.update();
+  requestAnimationFrame(animate);
+  render();
+}
+
+function render() {
+  renderer.render(scene, camera);
+}
+
+
+</script>
+</body>
+
+</html>
