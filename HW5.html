@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+<style>
+#info {
+  position: absolute;
+  top: 0px;
+  width: 100%;
+  padding: 10px;
+  text-align: center;
+  color: #ffff00
+}
+
+body {
+  overflow: hidden;
+}
+
+
+</style>
+</head>
+
+<body> 
+<div id="info">I3B05 HW05
+ </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r70/three.min.js"></script>
+<script src="https://dl.dropboxusercontent.com/u/3587259/Code/Threejs/OrbitControls.js">
+</script>
+<script src="https://jyunming-chen.github.io/tutsplus/js/KeyboardState.js"></script>
+
+
+<script>
+var camera, scene, renderer, light, controls;
+var missile;
+var pos, vel, force;
+var clock = new THREE.Clock();
+var target;
+var puck ; 
+var targetCatch = false ; 
+var collisionOccur = false ; 
+var maxSpeed = 60;
+var maxForce = 10;
+
+var balloons = [] ; 
+
+var sprite ;
+var stArray = [];
+var texture ; 
+var baseS = 0,  baseT = 0;
+var counter = 0;
+var texMat;
+
+var Balloon = function( rad , initPos ){
+  this.position = initPos ;
+  this.radius = rad ; 
+  this.mesh = new THREE.Mesh(new THREE.SphereGeometry(this.radius , 20, 20), new THREE.MeshNormalMaterial());
+  scene.add(this.mesh) ;
+  this.mesh.position.copy(this.position);
+
+}
+
+init();
+animate();
+		
+
+function buildMissile() {
+	var missile = new THREE.Object3D();
+  var normalMat = new THREE.MeshNormalMaterial();
+	var tip = new THREE.Mesh (new THREE.CylinderGeometry (0,5,10,20), normalMat);
+  var body = new THREE.Mesh (new THREE.CylinderGeometry (5,5,20,20), normalMat);
+ 	body.add (tip);
+  tip.position.y = 10/2 + 20/2;
+  body.position.y = 20/2;
+ 
+ 	missile.add (body);
+  missile.rotation.z = -Math.PI/2;
+  var missileFrame = new THREE.Object3D();
+  missileFrame.add (missile);
+	return missileFrame;
+}
+
+function setUpStArray() {
+  for (var i = 0; i < 5; i++) {
+    var row = [];
+    for (var j = 0; j < 9; j++)
+      row.push(new THREE.Vector2(j * 0.125, 1 - 0.25 * i));
+    stArray.push(row);
+  }
+}
+
+function buildSprite( size, location ) {
+	
+  setUpStArray();
+  // loading texture from imgur.com
+  //texture.wrapS = THREE.RepeatWrapping;
+  
+  // setting up texMat
+  var texMat = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,  // cutout texture: set transparent: true
+    side: THREE.DoubleSide
+  });
+
+  var geometry = new THREE.Geometry();
+  geometry.vertices.push(
+    new THREE.Vector3( -size, -size, 0),
+    new THREE.Vector3(size, -size, 0),
+    new THREE.Vector3(size, size, 0),
+    new THREE.Vector3(-size, size, 0)
+  );
+
+  var face;
+  face = new THREE.Face3(0, 1, 2);
+  geometry.faces.push(face);
+  face = new THREE.Face3(0, 2, 3);
+  geometry.faces.push(face);
+
+  geometry.faceVertexUvs[0].push([stArray[1][0], stArray[1][1], stArray[0][1]]);
+  geometry.faceVertexUvs[0].push([stArray[1][0], stArray[0][1], stArray[0][0]]);
+
+  geometry.computeBoundingSphere();
+  geometry.computeFaceNormals();
+  geometry.computeVertexNormals();
+
+  sprite = new THREE.Mesh(geometry, texMat);
+  scene.add(sprite);
+  sprite.position.copy( location ) ;
+
+}
+
+function makeBalloons(){
+
+	for( var i = 15 ; i < 25 ; i++ ) {
+  	var randomX = Math.random() * 420 - 320  ;
+    var randomY = Math.random() * 60 + 60;
+    var randomZ = Math.random() * 420 - 120  ;
+   	var initPos =  new THREE.Vector3(randomX , randomY , randomZ );
+    balloons.push( new Balloon( i , initPos) ) ;
+  }
+  //balloons.push( new Balloon( 15 , new THREE.Vector3(-160 , 30 , 280 ) ) ) ; 
+  
+}
+
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function spriteAnimate() {
+  var geometry = sprite.geometry;
+  var st0 = stArray[baseS + 1][baseT];
+  var st1 = stArray[baseS + 1][baseT + 1];
+  var st2 = stArray[baseS][baseT + 1];
+  var st3 = stArray[baseS][baseT];
+
+  geometry.faceVertexUvs[0] = [];
+  geometry.faceVertexUvs[0].push([st0, st1, st2]);
+  geometry.faceVertexUvs[0].push([st0, st2, st3]);
+  geometry.uvsNeedUpdate = true;
+
+  baseT = (baseT + 1) % 8;
+  if (baseT === 0) {
+    baseS = (baseS + 1) % 4;
+  }
+}
+
+function init() {
+  scene = new THREE.Scene();
+
+  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 10000);
+  camera.position.z = 800;
+  camera.position.y = 100;
+  scene.add(camera);
+  window.addEventListener('resize', onWindowResize, false);
+
+  light = new THREE.PointLight(0xffffff);
+  light.position.set(100, 300, 200);
+  scene.add(light);
+
+  var gridXZ = new THREE.GridHelper(300, 20);
+   gridXZ.setColors(new THREE.Color(0xff0000), new THREE.Color(0xffffff));
+  scene.add(gridXZ);
+
+  renderer = new THREE.WebGLRenderer();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x888888);
+
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+  document.body.appendChild(renderer.domElement);
+  ////////////////////////////////////////////////////////////////////////
+	
+  THREE.ImageUtils.crossOrigin = '';
+  texture = THREE.ImageUtils.loadTexture('https://i.imgur.com/6ePTx6p.png');
+  
+	puck = new THREE.Mesh (new THREE.CylinderGeometry (20,20,60), new THREE.MeshNormalMaterial());
+  scene.add (puck);
+  puck.position.set (-200,30,280);
+  
+  missile = buildMissile();
+	pos = new THREE.Vector3();
+	vel = new THREE.Vector3(120,0,0);
+	force = new THREE.Vector3();
+ 
+	missile.rotation.y = 0;//-Math.PI/4;
+  missile.rotation.z = Math.PI/6;
+  missile.position.set (-280,0,-280);
+  
+  pos.copy (missile.position);
+  vel.applyEuler (missile.rotation);
+
+	scene.add (missile);
+  target = null;
+  
+  makeBalloons();
+  
+}
+function vectorClamp (v, vMax) {
+	if (v.length() > vMax)
+  	v.setLength (vMax);
+}
+	
+function animate() {
+	counter++ ;
+  controls.update();
+ 
+	var dt = clock.getDelta();
+  
+  // if reach 50, move to target (280,50,280)
+  if (target === null && pos.y > 50) {
+    target = new THREE.Vector3(-150, 50, 280);
+  }
+  
+  if (target !== null && target.distanceTo (pos) < 100) {
+    target = new THREE.Vector3 (-200, 20, 280);
+  }
+  
+  if (target !== null && target.distanceTo (pos) < 40) {
+  	vel.set (0,0,0);
+    buildSprite( 100 , target);
+    target = null;
+    force.set (0,0,0);
+    collisionOccur = true ;
+    targetCatch = true  ;
+    scene.remove(missile);
+    counter = 0 ;
+  }
+  
+  // catch handling
+ 	for( var i = 0 ; i < balloons.length ; i++ ){
+  	if ( pos.distanceTo( balloons[i].position) < balloons[i].radius + 5 ) {
+    			console.log('bomb¡I');
+          pos.set (0,0,0);
+    			vel.set (0,0,0);
+    			target = null;
+    			force.set (0,0,0);
+      		collisionOccur = true  ;
+    		  buildSprite( 50 , balloons[i].position );
+          scene.remove(balloons[i].mesh) ;
+          counter = 0 ;
+    	}
+  }
+  
+  if( collisionOccur ){
+  	
+    sprite.lookAt (camera.position);		
+  	
+    if( counter % 4 === 0 && counter < 130 )
+      	spriteAnimate();
+        
+    if( counter > 130 && targetCatch)
+    	   scene.remove(puck);
+   
+  }
+  
+  if (target !== null)
+		force = target.clone().sub(pos).setLength(maxSpeed).sub(vel);
+   
+  // collision avoidance (for each balloons) 
+  for( var i = 0 ; i < balloons.length ; i++ ) {
+    	var tmp = balloons[i].position.clone().sub(pos);
+    	var tmpProj = tmp.clone().projectOnVector(vel) ;
+      
+    	if (tmp.dot(vel) > 0) {
+    		if (tmpProj.clone().sub(tmp).length() < balloons[i].radius + 5 ) {
+ 
+          if (tmpProj.length() < 5 *vel.length()) {
+            force.add (tmpProj.clone().sub(tmp).multiplyScalar(5));    	
+          }
+        }
+      }  
+	} 
+  if(  pos.z > 320 ) {
+  	pos.set (0,0,0);
+    vel.set (0,0,0);
+    target = null;
+    force.set (0,0,0);
+    scene.remove( missile) ;
+  }
+
+	   
+	vectorClamp (force, maxForce);
+	vel.add (force.clone().multiplyScalar(dt));
+  vectorClamp (vel, maxSpeed);
+  pos.add (vel.clone().multiplyScalar(dt));
+
+	missile.position.copy (pos);
+
+	// set orientation
+  var quaternion = new THREE.Quaternion();
+  var localDir = new THREE.Vector3(1,0,0);
+  var angle = localDir.angleTo (vel);
+  var axis = new THREE.Vector3();
+  axis.crossVectors (localDir, vel).normalize();
+  quaternion.setFromAxisAngle (axis,angle);
+  missile.quaternion.copy (quaternion);
+  
+  requestAnimationFrame(animate);
+  render();
+}
+
+function render() {
+  renderer.render(scene, camera);
+}
+
+
+</script>
+</body>
+
+</html>
